@@ -2,6 +2,7 @@ import { connectToDatabase } from "@/db/connectToDatabase";
 import User from "@/models/user.model";
 import { NextAuthOptions } from "next-auth";
 import  CredentialsProvider  from "next-auth/providers/credentials";
+import Google from "next-auth/providers/google";
 export const authOptions: NextAuthOptions = {
     providers: [
         CredentialsProvider({
@@ -16,7 +17,7 @@ export const authOptions: NextAuthOptions = {
                 }
                 try {
                     await connectToDatabase();
-                    const user = await User.findOne({ email: credentials.email });
+                    const user = await User.findOne({ email: credentials.email }).select("+password");
                     if (!user) throw new Error("No user found with this email!!!😢");
                     const isValid = user.isPasswordCorrect(credentials.password);
                     if (!isValid) throw new Error("Password is incorrect!!!😵");
@@ -31,8 +32,29 @@ export const authOptions: NextAuthOptions = {
                 }
             },
         }),
+        Google({
+            clientId: process.env.GOOGLE_CLIENT_ID!,
+            clientSecret:process.env.GOOGLE_CLIENT_SECRET!
+        }),
     ],
     callbacks: {
+        async signIn({ user, account }) {
+            try {
+                await connectToDatabase();
+                const existingUser = await User.findOne({ email: user.email });
+                if (!existingUser) {
+                    const newUser = await User.create({ email: user.email, password: "o auth provider" });
+                    user.id = newUser._id?.toString();
+                    user.role = newUser.role;
+                    return true;
+                }
+                user.id = existingUser._id?.toString();
+                user.role = existingUser.role;
+                return true;
+            } catch (error) {
+                console.error("O auth login error: ", error);
+            }
+        },
         async jwt({ token, user }) {
             if (user) {
                 token.role = user.role;
